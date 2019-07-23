@@ -8,6 +8,7 @@ import json
 import os
 from adl_func_backend.xAODlib.exe_atlas_xaod_hash_cache import use_executor_xaod_hash_cache, CacheExeException
 import logging
+import inspect
 
 # WARNING:
 # Meant to be run from within a container. Some things are assumed:
@@ -45,9 +46,12 @@ def process_message(ch, method, properties, body):
         }
         ch.basic_publish(exchange='', routing_key='run_cpp', body=json.dumps(msg))
 
-    except CacheExeException as e:
-        # We crashed. No idea why, but lets log it.
-        ch.basic_publish(exchange='', routing_key='status_change_state', body=json.dumps({'hash': hash, 'phase': f'crashed_cpp - {e.message}'}))
+    except BaseException as e:
+        # We crashed. No idea why, but lets log it, and give up on this request.
+        frame = inspect.trace()[-1]
+        where_raised = f'Exception raised in function {frame[3]} ({frame[1]}:{frame[2]}).'
+        ch.basic_publish(exchange='', routing_key='status_change_state', body=json.dumps({'hash': hash, 'phase': f'crashed'}))
+        ch.basic_publish(exchange='', routing_key='crashed_request', body=json.dumps({'hash':hash, 'message':'While translating python to C++', 'log': [where_raised, f'  {str(e)}']}))
 
     # Done! Take this off the queue now.
     ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -65,6 +69,7 @@ def listen_to_queue(rabbit_server:str, rabbit_user:str, rabbit_pass:str):
     channel.queue_declare(queue='run_cpp')
     channel.queue_declare(queue='status_change_state')
     channel.queue_declare(queue='status_number_jobs')
+
 
     channel.basic_consume(queue='parse_cpp', on_message_callback=process_message, auto_ack=False)
 
