@@ -9,10 +9,14 @@ import os
 from adl_func_backend.xAODlib.exe_atlas_xaod_hash_cache import use_executor_xaod_hash_cache, CacheExeException
 import logging
 import inspect
+import zipfile
+import os
 
-# WARNING:
-# Meant to be run from within a container. Some things are assumed:
-#  1) /cache maps to a source code location
+def zipdir(path: str, zip_handle: zipfile.ZipFile):
+    # zip_handle is zipfile handle
+    for root, _, files in os.walk(path):
+        for file in files:
+            zip_handle.write(os.path.join(root, file), file)
 
 def process_message(ch, method, properties, body):
     'Message comes in off the queue. We deal with it.'
@@ -32,6 +36,16 @@ def process_message(ch, method, properties, body):
         # For now, we do one job only.
         ch.basic_publish(exchange='', routing_key='status_number_jobs', body=json.dumps({'hash': hash, 'njobs': 1}))
 
+        # Zip up everything in the directory - we are going to ship it as part of the message. To send it we are going to base64 it.
+        z_filename = f'/tmp/{r.hash}.zip'
+        zip_h = zipfile.ZipFile(z_filename, 'w', zipfile.ZIP_DEFLATED)
+        zipdir(f'/cache/{r.hash}', zip_h)
+        zip_h.close()
+
+        with open(z_filename, 'rb') as b_in:
+            zip_data = b_in.read()
+        zip_data_b64 = bytes.decode(base64.b64encode(zip_data))
+
         # Create the JSON message that can be sent on to the next stage.
         # Are now carrying along two hashes - one that identifies this query and everything associated with it.
         # And a second that is for the source code for this query (which is independent of the files we are going to process).
@@ -43,6 +57,7 @@ def process_message(ch, method, properties, body):
             'files': r.filelist,
             'output_file': f'{hash}/{filebase}_001{extension}',
             'treename': r.treename,
+            'file_data': zip_data_b64
         }
         ch.basic_publish(exchange='', routing_key='run_cpp', body=json.dumps(msg))
 
