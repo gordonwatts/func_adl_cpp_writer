@@ -1,5 +1,5 @@
 # Simple command line that will translate an AST to a C++ program.
-from adl_func_backend.xAODlib.exe_atlas_xaod_hash_cache import use_executor_xaod_hash_cache
+from func_adl.xAOD.backend.xAODlib.exe_atlas_xaod_hash_cache import use_executor_xaod_hash_cache
 
 import sys
 import os

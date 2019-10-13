@@ -6,7 +6,7 @@ import ast
 import base64
 import json
 import os
-from adl_func_backend.xAODlib.exe_atlas_xaod_hash_cache import use_executor_xaod_hash_cache, CacheExeException
+from func_adl.xAOD.backend.xAODlib.exe_atlas_xaod_hash_cache import use_executor_xaod_hash_cache, CacheExeException
 import logging
 import inspect
 import zipfile
@@ -67,6 +67,9 @@ def process_message(ch, method, properties, body):
         where_raised = f'Exception raised in function {frame[3]} ({frame[1]}:{frame[2]}).'
         ch.basic_publish(exchange='', routing_key='status_change_state', body=json.dumps({'hash': hash, 'phase': f'crashed'}))
         ch.basic_publish(exchange='', routing_key='crashed_request', body=json.dumps({'hash':hash, 'message':'While translating python to C++', 'log': [where_raised, f'  {str(e)}']}))
+
+        # Finally, dump the crash to the log
+        logging.exception(e)
 
     # Done! Take this off the queue now.
     ch.basic_ack(delivery_tag=method.delivery_tag)
